@@ -1,0 +1,151 @@
+/*a) Escriba un programa usando el Timer 0 para generar una señal cuadrada de 1000 Hz en el pin
+PC2.*/
+
+/*Tenemos que la frecuencia del erloj del sistema es de 16MHz
+A 1kHz de frecuencia tenemos un peíodo de T=1ms.*/
+
+.include "m328pdef.inc"
+
+.def salida = r17
+.def comparador = r18
+
+.cseg
+.org 0x0000
+	rjmp main
+
+main:
+	; Inicializo el Stack Pointer
+	ldi r16, LOW(RAMEND)
+	out spl, r16
+	ldi r16, HIGH(RAMEND)
+	out sph, r16
+
+	; Configuro la salida
+	ldi r16, 0x04
+	out DDRC, r16 ; Tenemos la salida en el PINC2
+
+	clr salida
+
+main_loop:
+	out PORTB, salida
+	call delay
+	eor salida, comparador ; toggle 
+	rjmp main_loop
+
+; TIMER 0 DELAY
+delay:
+	ldi r19, 0xe0
+	out TCNT0, r19 ; carga el timer 0
+	ldi r19,  0b00000100; quiero el timer 0 en normal mode, int clk, prescaler
+	out TCCR0B, r19
+
+again:
+	in r19, TIFR0 ; read TIFR
+	sbrs r19, TOV0 ; if TOV0 es set skip next instruction
+	rjmp again
+
+	clr r19
+	out TCCR0B, r19 ; stop TIMER0
+	ldi r19, 1<<TOV0
+	out TIFR0, r19
+	ret
+
+
+/*Escriba un programa que genere una onda cuadrada de 500 Hz en el pin PB1. Luego de la
+configuración inicial, el micro debe quedar en un bucle infinito sin ejecutar ningún tipo de lógica y
+las interrupciones deben estar deshabilitadas.*/
+
+.include "m328pdef.inc"
+
+.cseg
+.org 0x0000
+	rjmp main
+
+main:
+	; Inicializo el Stack Pointer
+	ldi r16, LOW(RAMEND)
+	out spl, r16
+	ldi r16, HIGH(RAMEND)
+	out sph, r16
+
+	; Configuro la salida
+	ldi r16, 0x02
+	out DDRB, r16
+
+	; Configuro el CTC
+	ldi r17, 0b10000000
+	out TCCR1A, r17
+	ldi r17, 0b00001101 ; los ultimos tres bits son el prescaler
+	out TCCR1B, r17
+
+	ldi r17, 125
+	out OCR1A, r17
+
+	cli ; Deshabilito las interrupciones
+
+fin:
+	rjmp fin
+
+
+/*Conectar un pulsador al pin PB1 (usando R de pull-up interna) y un led al PB2 con una resistencia
+limitadora de corriente. Cuando se presiona la tecla el programa debe incrementar la intensidad
+del led. Al llegar a la máxima intensidad el siguiente paso lo apagará completamente. La cantidad
+de pasos será definida por el programador, pero debe ser mayor a 8.
+El programa se debe resolver utilizando el modo PWM del timer. Se debe considerar que la tecla
+tiene rebote y se usará un timer para esperarlo de forma no bloqueante.*/
+
+.include "m328pdef.inc"
+
+.def contador = r18
+
+.cseg
+.org 0x0000
+	rjmp main
+
+.org PCI0addr
+	rjmp interrupciones
+
+main:
+	; Inicializo el Stack Pointer
+	ldi r16, LOW(RAMEND)
+	out sph, r16
+	ldi r16, HIGH(RAMEND)
+	out spl, r16
+
+	; Configuro la entrada y salida
+	ldi r16, 0x04 ; Necesito el PB1 como entrada y el PB2 como salida
+	out DDRB, r16
+	ldi r16, 0x02
+	out PORTB, r16 ; Configuro la resistencia de PULL-UP
+
+	; Configuro el timer
+	ldi r16, 0x01
+	sts TCCR1A, r16
+	ldi r16, 0b00010100
+	sts TCCR1B, r16
+	
+
+	; Configuracion interrupcion
+	ldi r16, 0X01
+	sts PCICR, r16
+	ldi r16, 0X01
+	sts PCMSK0, r16 
+	sei ; Habilito interrupciones globales
+
+	clr contador
+	ldi r19, 31
+
+main_loop:
+	rjmp main_loop
+
+interrupciones:
+	add contador, r19
+	sts OCR1AL, contador
+	cpi contador, 247
+	breq casi_fin
+	reti
+
+casi_fin:	
+	cli
+fin:
+	rjmp fin
