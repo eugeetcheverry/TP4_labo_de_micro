@@ -2,16 +2,19 @@
 PC2.*/
 
 /*Tenemos que la frecuencia del erloj del sistema es de 16MHz
-A 1kHz de frecuencia tenemos un peíodo de T=1ms.*/
+A 1kHz de frecuencia tenemos un peíodo de T=1ms.     0xe0*/
 
 .include "m328pdef.inc"
 
 .def salida = r17
-.def comparador = r18
+.def mask = r18
 
 .cseg
 .org 0x0000
 	rjmp main
+
+.org OC0Aaddr
+	rjmp interrupt
 
 main:
 	; Inicializo el Stack Pointer
@@ -24,31 +27,33 @@ main:
 	ldi r16, 0x04
 	out DDRC, r16 ; Tenemos la salida en el PINC2
 
+	; Configuro el timer 0
+	ldi r16, 0b10000010
+	out TCCR0A, r16
+
+	ldi r16, 0x7d
+	out OCR0A, r16
+
+	ldi r16, 0x02
+	sts TIMSK0, r16
+
+	sei ; Habilito las interrupciones globales
+
 	clr salida
+	ldi mask, 0x04
+
+	out PORTC, salida ; salida inicial en 0
+
+	ldi r16, 0b00000011
+	out TCCR0B, r16 ; cuando seteamos el prescaler 64 arranca a contar
 
 main_loop:
-	out PORTB, salida
-	call delay
-	eor salida, comparador ; toggle 
 	rjmp main_loop
 
-; TIMER 0 DELAY
-delay:
-	ldi r19, 0xe0
-	out TCNT0, r19 ; carga el timer 0
-	ldi r19,  0b00000100; quiero el timer 0 en normal mode, int clk, prescaler
-	out TCCR0B, r19
-
-again:
-	in r19, TIFR0 ; read TIFR
-	sbrs r19, TOV0 ; if TOV0 es set skip next instruction
-	rjmp again
-
-	clr r19
-	out TCCR0B, r19 ; stop TIMER0
-	ldi r19, 1<<TOV0
-	out TIFR0, r19
-	ret
+interrupt: 
+	ldi salida, 0b00000100
+	out PINC, salida  ; haciendo con toggle
+	reti
 
 
 /*Escriba un programa que genere una onda cuadrada de 500 Hz en el pin PB1. Luego de la
@@ -105,6 +110,11 @@ tiene rebote y se usará un timer para esperarlo de forma no bloqueante.*/
 .org PCI0addr
 	rjmp interrupciones
 
+.org OC0Aaddr
+	rjmp anti_rebote
+
+.org INT_VECTORS_SIZE
+
 main:
 	; Inicializo el Stack Pointer
 	ldi r16, LOW(RAMEND)
@@ -118,29 +128,44 @@ main:
 	ldi r16, 0x02
 	out PORTB, r16 ; Configuro la resistencia de PULL-UP
 
-	; Configuro el timer
-	ldi r16, 0x01
+	; Configuro el timer 1
+	ldi r16, 0b00100001
 	sts TCCR1A, r16
-	ldi r16, 0b00010100
-	sts TCCR1B, r16
-	
 
-	; Configuracion interrupcion
+	; Configuracion interrupcion de pinchange
 	ldi r16, 0X01
 	sts PCICR, r16
-	ldi r16, 0X01
+	ldi r16, 0X02
 	sts PCMSK0, r16 
-	sei ; Habilito interrupciones globales
+
+	; Configuro interrupcion timer 0 para anti rebote
+	ldi r16, 0b10000000 ; uso modo normal, me baso en overflow
+	out TCCR0A, r16
+
+	ldi r16, 0x01
+	sts TIMSK0, r16
+	;coregirlo q quedo mal
 
 	clr contador
-	ldi r19, 31
+	ldi r19, 32
+
+	sei ; Habilito interrupciones globales
+
+	ldi r16, 0b00001100 ; prescaler en 256, 
+	sts TCCR1B, r16
+
 
 main_loop:
 	rjmp main_loop
 
 interrupciones:
 	add contador, r19
-	sts OCR1AL, contador
+	sts OCR1BL, contador
+	ldi r16, 0b00000100
+	out TCCR0B, r16
+	reti
+
+anti_rebote:
 	cpi contador, 247
 	breq casi_fin
 	reti
