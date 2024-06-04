@@ -3,11 +3,10 @@ PC2.*/
 
 /*Tenemos que la frecuencia del erloj del sistema es de 16MHz
 A 1kHz de frecuencia tenemos un peíodo de T=1ms.     0xe0*/
-
+/*
 .include "m328pdef.inc"
 
 .def salida = r17
-.def mask = r18
 
 .cseg
 .org 0x0000
@@ -40,7 +39,6 @@ main:
 	sei ; Habilito las interrupciones globales
 
 	clr salida
-	ldi mask, 0x04
 
 	out PORTC, salida ; salida inicial en 0
 
@@ -55,11 +53,11 @@ interrupt:
 	out PINC, salida  ; haciendo con toggle
 	reti
 
-
+	*/
 /*Escriba un programa que genere una onda cuadrada de 500 Hz en el pin PB1. Luego de la
 configuración inicial, el micro debe quedar en un bucle infinito sin ejecutar ningún tipo de lógica y
 las interrupciones deben estar deshabilitadas.*/
-
+/*
 .include "m328pdef.inc"
 
 .cseg
@@ -79,18 +77,19 @@ main:
 
 	; Configuro el CTC
 	ldi r17, 0b10000000
-	out TCCR1A, r17
-	ldi r17, 0b00001101 ; los ultimos tres bits son el prescaler
-	out TCCR1B, r17
+	sts TCCR1A, r17
 
-	ldi r17, 125
-	out OCR1A, r17
+	ldi r17, 250
+	sts OCR1AL, r17
+
+	ldi r17, 0b00001101 ; los ultimos tres bits son el prescaler
+	sts TCCR1B, r17
 
 	cli ; Deshabilito las interrupciones
 
 fin:
 	rjmp fin
-
+	*/
 
 /*Conectar un pulsador al pin PB1 (usando R de pull-up interna) y un led al PB2 con una resistencia
 limitadora de corriente. Cuando se presiona la tecla el programa debe incrementar la intensidad
@@ -110,7 +109,7 @@ tiene rebote y se usará un timer para esperarlo de forma no bloqueante.*/
 .org PCI0addr
 	rjmp interrupciones
 
-.org OC0Aaddr
+.org OVF0addr
 	rjmp anti_rebote
 
 .org INT_VECTORS_SIZE
@@ -133,9 +132,9 @@ main:
 	sts TCCR1A, r16
 
 	; Configuracion interrupcion de pinchange
-	ldi r16, 0X01
+	ldi r16, 0x01
 	sts PCICR, r16
-	ldi r16, 0X02
+	ldi r16, 0x02
 	sts PCMSK0, r16 
 
 	; Configuro interrupcion timer 0 para anti rebote
@@ -144,10 +143,12 @@ main:
 
 	ldi r16, 0x01
 	sts TIMSK0, r16
-	;coregirlo q quedo mal
 
 	clr contador
-	ldi r19, 32
+	ldi r19, 10 ; Le defino los incrementos para que sean más de 8
+
+	ldi r16, 0x01
+	out TIFR0, r16
 
 	sei ; Habilito interrupciones globales
 
@@ -162,15 +163,15 @@ interrupciones:
 	add contador, r19
 	sts OCR1BL, contador
 	ldi r16, 0b00000100
-	out TCCR0B, r16
+	out TCCR0B, r16 ; Al setear acá el TCCR0B prendo el clock del timer 0 para el delay
 	reti
 
 anti_rebote:
-	cpi contador, 247
+	cpi contador, 100 ; El botón se tocó 10 veces
 	breq casi_fin
 	reti
 
 casi_fin:	
-	cli
+	cli ; limpio las interrupciones globales
 fin:
 	rjmp fin
